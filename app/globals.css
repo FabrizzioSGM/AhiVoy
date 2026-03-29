@@ -1,0 +1,102 @@
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap');
+
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  :root {
+    --background: 248 250 252;
+    --foreground: 15 27 45;
+    --card: 255 255 255;
+    --card-foreground: 15 27 45;
+    --border: 226 232 240;
+    --input: 226 232 240;
+    --ring: 14 165 233;
+    --radius: 0.5rem;
+  }
+
+  * {
+    @apply border-surface-200;
+  }
+
+  body {
+    @apply bg-surface-50 text-ink-900 antialiased;
+    font-feature-settings: "rlig" 1, "calt" 1;
+  }
+
+  h1, h2, h3, h4, h5, h6 {
+    @apply font-semibold tracking-tight;
+  }
+
+  h1 { @apply text-4xl leading-tight; }
+  h2 { @apply text-3xl leading-tight; }
+  h3 { @apply text-2xl; }
+  h4 { @apply text-xl; }
+  h5 { @apply text-lg; }
+}
+
+@layer components {
+  .container-page {
+    @apply max-w-7xl mx-auto px-4 sm:px-6 lg:px-8;
+  }
+
+  .section {
+    @apply py-20 lg:py-28;
+  }
+
+  .section-sm {
+    @apply py-12 lg:py-16;
+  }
+
+  .card {
+    @apply bg-white rounded-xl border border-surface-200 shadow-card;
+  }
+
+  .card-md {
+    @apply bg-white rounded-xl border border-surface-200 shadow-card-md;
+  }
+
+  .badge-trust {
+    @apply inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-medium;
+  }
+
+  .badge-verified {
+    @apply badge-trust bg-trust-greenLight text-trust-green;
+  }
+
+  .badge-pending {
+    @apply badge-trust bg-trust-amberLight text-trust-amber;
+  }
+
+  .badge-alert {
+    @apply badge-trust bg-trust-redLight text-trust-red;
+  }
+
+  .step-number {
+    @apply w-8 h-8 rounded-full bg-accent-500 text-white text-sm font-semibold flex items-center justify-center flex-shrink-0;
+  }
+
+  .nav-link {
+    @apply text-sm font-medium text-ink-600 hover:text-ink-900 transition-colors;
+  }
+
+  .nav-link-active {
+    @apply text-sm font-medium text-accent-600;
+  }
+}
+
+@layer utilities {
+  .text-balance {
+    text-wrap: balance;
+  }
+
+  .scrollbar-hide {
+    -ms-overflow-style: none;
+    scrollbar-width: none;
+  }
+
+  .scrollbar-hide::-webkit-scrollbar {
+    display: none;
+  }
+}
