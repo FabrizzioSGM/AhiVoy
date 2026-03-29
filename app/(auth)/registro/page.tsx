@@ -1,15 +1,16 @@
 "use client";
 import Link from "next/link";
 import { useState } from "react";
-import { useSearchParams } from "next/navigation";
+import { useSearchParams, useRouter } from "next/navigation";
 import { ArrowRight, Package, TruckIcon, CheckCircle2, Shield } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { cn } from "@/lib/utils";
 import { Suspense } from "react";
+import { signUp } from "@/lib/auth";
 
 function RegistroContent() {
+  const router = useRouter();
   const searchParams = useSearchParams();
   const initialRole = searchParams.get("rol") as "embarcador" | "transportista" | null;
   const [selectedRole, setSelectedRole] = useState<"embarcador" | "transportista" | null>(initialRole);
@@ -19,6 +20,9 @@ function RegistroContent() {
   const [company, setCompany] = useState("");
   const [phone, setPhone] = useState("");
   const [password, setPassword] = useState("");
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [success, setSuccess] = useState(false);
 
   const roles = [
     {
@@ -42,12 +46,59 @@ function RegistroContent() {
     setStep("form");
   };
 
-  const handleSubmit = (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    window.location.href = selectedRole === "embarcador"
-      ? "/onboarding/embarcador"
-      : "/onboarding/transportista";
+    if (!selectedRole) return;
+    setError(null);
+    setLoading(true);
+
+    try {
+      await signUp({
+        email,
+        password,
+        name,
+        phone,
+        role: selectedRole,
+        companyName: company,
+      });
+
+      // Show success — Supabase sends confirmation email by default
+      setSuccess(true);
+    } catch (err: unknown) {
+      const message = err instanceof Error ? err.message : "Error al crear la cuenta";
+      if (message.includes("already registered") || message.includes("already exists")) {
+        setError("Ya existe una cuenta con ese correo. ¿Quieres iniciar sesión?");
+      } else if (message.includes("Password should be at least")) {
+        setError("La contraseña debe tener al menos 6 caracteres.");
+      } else {
+        setError(message);
+      }
+    } finally {
+      setLoading(false);
+    }
   };
+
+  if (success) {
+    return (
+      <div className="min-h-screen flex items-center justify-center px-6">
+        <div className="max-w-md text-center">
+          <div className="w-16 h-16 bg-green-100 rounded-full flex items-center justify-center mx-auto mb-6">
+            <CheckCircle2 className="w-8 h-8 text-green-600" />
+          </div>
+          <h1 className="text-2xl font-bold text-ink-900 mb-3">¡Cuenta creada!</h1>
+          <p className="text-ink-500 mb-2">
+            Te enviamos un correo de confirmación a <strong>{email}</strong>.
+          </p>
+          <p className="text-ink-400 text-sm mb-8">
+            Confirma tu correo para activar tu cuenta y comenzar el proceso de verificación.
+          </p>
+          <Button onClick={() => router.push("/login")} size="lg" className="w-full">
+            Ir a iniciar sesión <ArrowRight className="w-4 h-4" />
+          </Button>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="min-h-screen flex">
@@ -159,25 +210,25 @@ function RegistroContent() {
                 <div className="grid grid-cols-2 gap-3">
                   <div className="col-span-2">
                     <Label htmlFor="name">Nombre completo</Label>
-                    <Input id="name" placeholder="Tu nombre" value={name} onChange={(e) => setName(e.target.value)} className="mt-1.5" required />
+                    <Input id="name" placeholder="Tu nombre" value={name} onChange={(e) => setName(e.target.value)} className="mt-1.5" required disabled={loading} />
                   </div>
                   <div className="col-span-2">
                     <Label htmlFor="company">
                       {selectedRole === "embarcador" ? "Nombre de la empresa" : "Empresa o nombre de operación"}
                     </Label>
-                    <Input id="company" placeholder="Mi Empresa S.A. de C.V." value={company} onChange={(e) => setCompany(e.target.value)} className="mt-1.5" required />
+                    <Input id="company" placeholder="Mi Empresa S.A. de C.V." value={company} onChange={(e) => setCompany(e.target.value)} className="mt-1.5" required disabled={loading} />
                   </div>
                   <div className="col-span-2">
                     <Label htmlFor="reg-email">Correo electrónico corporativo</Label>
-                    <Input id="reg-email" type="email" placeholder="tucorreo@empresa.com" value={email} onChange={(e) => setEmail(e.target.value)} className="mt-1.5" required />
+                    <Input id="reg-email" type="email" placeholder="tucorreo@empresa.com" value={email} onChange={(e) => setEmail(e.target.value)} className="mt-1.5" required disabled={loading} />
                   </div>
                   <div>
                     <Label htmlFor="phone">Teléfono</Label>
-                    <Input id="phone" type="tel" placeholder="55 1234 5678" value={phone} onChange={(e) => setPhone(e.target.value)} className="mt-1.5" required />
+                    <Input id="phone" type="tel" placeholder="55 1234 5678" value={phone} onChange={(e) => setPhone(e.target.value)} className="mt-1.5" required disabled={loading} />
                   </div>
                   <div>
                     <Label htmlFor="reg-password">Contraseña</Label>
-                    <Input id="reg-password" type="password" placeholder="••••••••" value={password} onChange={(e) => setPassword(e.target.value)} className="mt-1.5" required minLength={8} />
+                    <Input id="reg-password" type="password" placeholder="••••••••" value={password} onChange={(e) => setPassword(e.target.value)} className="mt-1.5" required minLength={6} disabled={loading} />
                   </div>
                 </div>
 
@@ -188,8 +239,24 @@ function RegistroContent() {
                   </p>
                 </div>
 
-                <Button type="submit" size="lg" className="w-full">
-                  Crear cuenta y comenzar verificación <ArrowRight className="w-4 h-4" />
+                {error && (
+                  <p className="text-sm text-red-600 bg-red-50 border border-red-200 rounded-lg px-3 py-2">
+                    {error}
+                    {error.includes("iniciar sesión") && (
+                      <Link href="/login" className="ml-1 underline font-medium">Ir a login</Link>
+                    )}
+                  </p>
+                )}
+
+                <Button type="submit" size="lg" className="w-full" disabled={loading}>
+                  {loading ? (
+                    <span className="flex items-center gap-2">
+                      <span className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" />
+                      Creando cuenta...
+                    </span>
+                  ) : (
+                    <>Crear cuenta y comenzar verificación <ArrowRight className="w-4 h-4" /></>
+                  )}
                 </Button>
               </form>
 

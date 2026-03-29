@@ -1,16 +1,49 @@
 "use client";
 import Link from "next/link";
 import { useState } from "react";
+import { useRouter } from "next/navigation";
 import { ArrowRight, Shield, Eye, EyeOff } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Separator } from "@/components/ui/separator";
+import { signIn } from "@/lib/auth";
 
 export default function LoginPage() {
+  const router = useRouter();
   const [showPassword, setShowPassword] = useState(false);
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  const handleSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setError(null);
+    setLoading(true);
+
+    try {
+      const { user } = await signIn({ email, password });
+      // Redirect based on role stored in user metadata
+      const role = user?.user_metadata?.role;
+      if (role === "transportista") {
+        router.push("/app/transportista");
+      } else {
+        router.push("/app/embarcador");
+      }
+    } catch (err: unknown) {
+      const message = err instanceof Error ? err.message : "Error al iniciar sesión";
+      if (message.includes("Invalid login credentials")) {
+        setError("Correo o contraseña incorrectos.");
+      } else if (message.includes("Email not confirmed")) {
+        setError("Confirma tu correo electrónico antes de iniciar sesión.");
+      } else {
+        setError(message);
+      }
+    } finally {
+      setLoading(false);
+    }
+  };
 
   return (
     <div className="min-h-screen flex">
@@ -55,7 +88,7 @@ export default function LoginPage() {
             </Link>
           </p>
 
-          <form className="space-y-4" onSubmit={(e) => { e.preventDefault(); window.location.href = "/app/embarcador"; }}>
+          <form className="space-y-4" onSubmit={handleSubmit}>
             <div>
               <Label htmlFor="email">Correo electrónico</Label>
               <Input
@@ -66,6 +99,8 @@ export default function LoginPage() {
                 onChange={(e) => setEmail(e.target.value)}
                 className="mt-1.5"
                 autoComplete="email"
+                required
+                disabled={loading}
               />
             </div>
             <div>
@@ -84,6 +119,8 @@ export default function LoginPage() {
                   onChange={(e) => setPassword(e.target.value)}
                   autoComplete="current-password"
                   className="pr-10"
+                  required
+                  disabled={loading}
                 />
                 <button
                   type="button"
@@ -95,8 +132,21 @@ export default function LoginPage() {
               </div>
             </div>
 
-            <Button type="submit" size="lg" className="w-full mt-2">
-              Iniciar sesión <ArrowRight className="w-4 h-4" />
+            {error && (
+              <p className="text-sm text-red-600 bg-red-50 border border-red-200 rounded-lg px-3 py-2">
+                {error}
+              </p>
+            )}
+
+            <Button type="submit" size="lg" className="w-full mt-2" disabled={loading}>
+              {loading ? (
+                <span className="flex items-center gap-2">
+                  <span className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" />
+                  Entrando...
+                </span>
+              ) : (
+                <>Iniciar sesión <ArrowRight className="w-4 h-4" /></>
+              )}
             </Button>
           </form>
 
@@ -108,7 +158,7 @@ export default function LoginPage() {
                 <Button
                   variant="outline"
                   size="sm"
-                  onClick={() => window.location.href = "/app/embarcador"}
+                  onClick={() => router.push("/app/embarcador")}
                   className="text-xs"
                 >
                   Ver demo embarcador
@@ -116,7 +166,7 @@ export default function LoginPage() {
                 <Button
                   variant="outline"
                   size="sm"
-                  onClick={() => window.location.href = "/app/transportista"}
+                  onClick={() => router.push("/app/transportista")}
                   className="text-xs"
                 >
                   Ver demo transportista
