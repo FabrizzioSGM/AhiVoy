@@ -1,12 +1,15 @@
 "use client";
 import { useState } from "react";
+import { useRouter } from "next/navigation";
 import Link from "next/link";
-import { ArrowRight, ArrowLeft, CheckCircle2, Package, Building2, FileText, Shield, Sparkles } from "lucide-react";
+import { ArrowRight, ArrowLeft, CheckCircle2, Package, Building2, FileText, Shield } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Progress } from "@/components/ui/progress";
 import { cn } from "@/lib/utils";
+import { createClient } from "@/lib/supabase/client";
+import { createCompany, markOnboardingComplete } from "@/lib/supabase/queries";
 
 const steps = [
   { id: "empresa", label: "Tu empresa", icon: Building2 },
@@ -16,11 +19,24 @@ const steps = [
 ];
 
 type StepId = "empresa" | "fiscal" | "perfil" | "completo";
-
 const stepOrder: StepId[] = ["empresa", "fiscal", "perfil", "completo"];
 
 export default function EmbarcadorOnboardingPage() {
+  const router = useRouter();
   const [currentStep, setCurrentStep] = useState<StepId>("empresa");
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  // Controlled form state
+  const [legalName, setLegalName] = useState("");
+  const [tradeName, setTradeName] = useState("");
+  const [city, setCity] = useState("");
+  const [state, setState] = useState("");
+  const [industry, setIndustry] = useState("");
+  const [rfc, setRfc] = useState("");
+  const [address, setAddress] = useState("");
+  const [postalCode, setPostalCode] = useState("");
+
   const stepIndex = stepOrder.indexOf(currentStep);
   const progress = ((stepIndex + 1) / stepOrder.length) * 100;
 
@@ -31,9 +47,37 @@ export default function EmbarcadorOnboardingPage() {
     if (stepIndex > 0) setCurrentStep(stepOrder[stepIndex - 1]);
   };
 
+  const handleFinalizar = async () => {
+    setError(null);
+    setSaving(true);
+    try {
+      const supabase = createClient();
+      const { data: { user } } = await supabase.auth.getUser();
+      if (!user) throw new Error("No hay sesión activa");
+
+      await createCompany(supabase, {
+        userId: user.id,
+        legalName: legalName || "Empresa sin nombre",
+        tradeName,
+        rfc,
+        address,
+        city: city || "Sin especificar",
+        state: state || "Sin especificar",
+        postalCode,
+        industry,
+      });
+
+      await markOnboardingComplete(supabase, user.id);
+      goNext();
+    } catch (err: unknown) {
+      setError(err instanceof Error ? err.message : "Error al guardar");
+    } finally {
+      setSaving(false);
+    }
+  };
+
   return (
     <div className="min-h-screen bg-surface-50 flex flex-col">
-      {/* Header */}
       <div className="bg-white border-b border-surface-200 px-6 py-4">
         <div className="max-w-2xl mx-auto flex items-center justify-between">
           <Link href="/" className="flex items-center gap-2">
@@ -46,14 +90,12 @@ export default function EmbarcadorOnboardingPage() {
         </div>
       </div>
 
-      {/* Progress */}
       <div className="bg-white border-b border-surface-200">
         <Progress value={progress} className="h-1 rounded-none" />
       </div>
 
       <div className="flex-1 flex items-center justify-center px-4 py-12">
         <div className="w-full max-w-lg">
-          {/* Step indicators */}
           <div className="flex items-center justify-center gap-2 mb-10">
             {steps.map((step, i) => {
               const Icon = step.icon;
@@ -74,7 +116,6 @@ export default function EmbarcadorOnboardingPage() {
             })}
           </div>
 
-          {/* Step content */}
           <div className="bg-white rounded-2xl border border-surface-200 shadow-card p-8">
             {currentStep === "empresa" && (
               <div>
@@ -86,25 +127,25 @@ export default function EmbarcadorOnboardingPage() {
                 <div className="space-y-4">
                   <div>
                     <Label>Razón social</Label>
-                    <Input placeholder="Mi Empresa S.A. de C.V." className="mt-1.5" />
+                    <Input placeholder="Mi Empresa S.A. de C.V." className="mt-1.5" value={legalName} onChange={e => setLegalName(e.target.value)} />
                   </div>
                   <div>
                     <Label>Nombre comercial (opcional)</Label>
-                    <Input placeholder="Como te conocen tus clientes" className="mt-1.5" />
+                    <Input placeholder="Como te conocen tus clientes" className="mt-1.5" value={tradeName} onChange={e => setTradeName(e.target.value)} />
                   </div>
                   <div className="grid grid-cols-2 gap-3">
                     <div>
                       <Label>Ciudad</Label>
-                      <Input placeholder="Ciudad de México" className="mt-1.5" />
+                      <Input placeholder="Ciudad de México" className="mt-1.5" value={city} onChange={e => setCity(e.target.value)} />
                     </div>
                     <div>
                       <Label>Estado</Label>
-                      <Input placeholder="CDMX" className="mt-1.5" />
+                      <Input placeholder="CDMX" className="mt-1.5" value={state} onChange={e => setState(e.target.value)} />
                     </div>
                   </div>
                   <div>
                     <Label>Giro o industria</Label>
-                    <Input placeholder="Manufactura, retail, distribución..." className="mt-1.5" />
+                    <Input placeholder="Manufactura, retail, distribución..." className="mt-1.5" value={industry} onChange={e => setIndustry(e.target.value)} />
                   </div>
                 </div>
               </div>
@@ -120,16 +161,16 @@ export default function EmbarcadorOnboardingPage() {
                 <div className="space-y-4">
                   <div>
                     <Label>RFC</Label>
-                    <Input placeholder="ABC123456789" className="mt-1.5 font-mono" maxLength={13} />
+                    <Input placeholder="ABC123456789" className="mt-1.5 font-mono" maxLength={13} value={rfc} onChange={e => setRfc(e.target.value.toUpperCase())} />
                     <p className="text-xs text-ink-400 mt-1">Se validará contra el SAT automáticamente.</p>
                   </div>
                   <div>
                     <Label>Dirección fiscal completa</Label>
-                    <Input placeholder="Av. Insurgentes Sur 1443, Col. Insurgentes Mixcoac" className="mt-1.5" />
+                    <Input placeholder="Av. Insurgentes Sur 1443, Col. Insurgentes Mixcoac" className="mt-1.5" value={address} onChange={e => setAddress(e.target.value)} />
                   </div>
                   <div>
                     <Label>Código postal fiscal</Label>
-                    <Input placeholder="03920" className="mt-1.5" maxLength={5} />
+                    <Input placeholder="03920" className="mt-1.5" maxLength={5} value={postalCode} onChange={e => setPostalCode(e.target.value)} />
                   </div>
                   <div>
                     <Label>Régimen fiscal</Label>
@@ -155,13 +196,7 @@ export default function EmbarcadorOnboardingPage() {
                     <Label>Tipos de carga que envías con frecuencia</Label>
                     <div className="mt-2 flex flex-wrap gap-2">
                       {["Carga general", "Manufactura", "Alimentos", "Electrodomésticos", "Textiles", "Autopartes", "Materiales de construcción", "Productos químicos"].map((tag) => (
-                        <button
-                          key={tag}
-                          type="button"
-                          className="text-xs px-3 py-1.5 rounded-full border border-surface-200 text-ink-600 hover:border-accent-400 hover:bg-accent-50 hover:text-accent-700 transition-colors"
-                        >
-                          {tag}
-                        </button>
+                        <button key={tag} type="button" className="text-xs px-3 py-1.5 rounded-full border border-surface-200 text-ink-600 hover:border-accent-400 hover:bg-accent-50 hover:text-accent-700 transition-colors">{tag}</button>
                       ))}
                     </div>
                   </div>
@@ -201,23 +236,34 @@ export default function EmbarcadorOnboardingPage() {
                     </div>
                   ))}
                 </div>
-                <Button asChild size="lg" className="w-full">
-                  <Link href="/app/embarcador">
-                    Ir a mi dashboard <ArrowRight className="w-4 h-4" />
-                  </Link>
+                <Button size="lg" className="w-full" onClick={() => router.push("/app/embarcador")}>
+                  Ir a mi dashboard <ArrowRight className="w-4 h-4" />
                 </Button>
               </div>
             )}
 
-            {/* Navigation */}
+            {error && (
+              <p className="mt-4 text-sm text-red-600 bg-red-50 border border-red-200 rounded-lg px-3 py-2">{error}</p>
+            )}
+
             {currentStep !== "completo" && (
               <div className="flex items-center justify-between mt-8 pt-6 border-t border-surface-100">
-                <Button variant="ghost" onClick={goBack} disabled={stepIndex === 0} className="gap-2">
+                <Button variant="ghost" onClick={goBack} disabled={stepIndex === 0 || saving} className="gap-2">
                   <ArrowLeft className="w-4 h-4" /> Atrás
                 </Button>
-                <Button onClick={goNext} className="gap-2">
-                  {stepIndex === stepOrder.length - 2 ? "Finalizar" : "Continuar"} <ArrowRight className="w-4 h-4" />
-                </Button>
+                {stepIndex === stepOrder.length - 2 ? (
+                  <Button onClick={handleFinalizar} disabled={saving} className="gap-2">
+                    {saving ? (
+                      <><span className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" />Guardando...</>
+                    ) : (
+                      <>Finalizar <ArrowRight className="w-4 h-4" /></>
+                    )}
+                  </Button>
+                ) : (
+                  <Button onClick={goNext} className="gap-2">
+                    Continuar <ArrowRight className="w-4 h-4" />
+                  </Button>
+                )}
               </div>
             )}
           </div>

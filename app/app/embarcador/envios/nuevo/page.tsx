@@ -1,5 +1,6 @@
 "use client";
 import { useState } from "react";
+import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { ArrowRight, ArrowLeft, Sparkles, FileText, Package, MapPin, Calendar, Shield, CheckCircle2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
@@ -9,25 +10,110 @@ import { Textarea } from "@/components/ui/textarea";
 import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { cn } from "@/lib/utils";
+import { createClient } from "@/lib/supabase/client";
+import { createShipment } from "@/lib/supabase/queries";
 
 type InputMode = "ai" | "form";
 
-const parsedExample = {
+interface ParsedData {
+  originCity: string;
+  originState: string;
+  destinationCity: string;
+  destinationState: string;
+  cargoDescription: string;
+  cargoType: string;
+  weightKg: number;
+  volumeM3?: number;
+  requiredDate: string;
+  declaredValue: number;
+}
+
+const aiExample: ParsedData = {
   originCity: "Ciudad de México", originState: "CDMX",
   destinationCity: "Monterrey", destinationState: "Nuevo León",
   cargoDescription: "Electrodomésticos — refrigeradores y lavadoras en pallets",
   cargoType: "Electrodomésticos", weightKg: 12000, volumeM3: 60,
-  requiredDate: "2025-02-11", declaredValue: 850000,
+  requiredDate: new Date(Date.now() + 7 * 86400000).toISOString().split("T")[0],
+  declaredValue: 850000,
 };
 
 export default function NuevoEnvioPage() {
+  const router = useRouter();
   const [mode, setMode] = useState<InputMode>("ai");
   const [aiInput, setAiInput] = useState("");
-  const [parsed, setParsed] = useState<typeof parsedExample | null>(null);
+  const [parsed, setParsed] = useState<ParsedData | null>(null);
   const [step, setStep] = useState<"input" | "confirm" | "published">("input");
+  const [publishing, setPublishing] = useState(false);
+  const [publishError, setPublishError] = useState<string | null>(null);
 
-  const handleAIParse = () => { setParsed(parsedExample); setStep("confirm"); };
-  const handlePublish = () => setStep("published");
+  // Form mode controlled state
+  const [form, setForm] = useState({
+    originCity: "", originState: "",
+    destinationCity: "", destinationState: "",
+    cargoDescription: "", cargoType: "",
+    weightKg: "", volumeM3: "",
+    requiredDate: "", declaredValue: "",
+  });
+
+  const setField = (key: keyof typeof form) => (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement>) =>
+    setForm(f => ({ ...f, [key]: e.target.value }));
+
+  const handleAIParse = () => {
+    // Mock AI parse — will be replaced with real Claude API in Phase 2
+    setParsed({ ...aiExample, rawInput: aiInput } as ParsedData & { rawInput?: string });
+    setStep("confirm");
+  };
+
+  const handleFormSubmit = () => {
+    const data: ParsedData = {
+      originCity: form.originCity || "Sin especificar",
+      originState: form.originState || "Sin especificar",
+      destinationCity: form.destinationCity || "Sin especificar",
+      destinationState: form.destinationState || "Sin especificar",
+      cargoDescription: form.cargoDescription || "Sin descripción",
+      cargoType: form.cargoType || "Carga general",
+      weightKg: parseFloat(form.weightKg) || 0,
+      volumeM3: form.volumeM3 ? parseFloat(form.volumeM3) : undefined,
+      requiredDate: form.requiredDate || new Date().toISOString().split("T")[0],
+      declaredValue: parseFloat(form.declaredValue) || 0,
+    };
+    setParsed(data);
+    setStep("confirm");
+  };
+
+  const handlePublish = async () => {
+    if (!parsed) return;
+    setPublishError(null);
+    setPublishing(true);
+
+    try {
+      const supabase = createClient();
+      const { data: { user } } = await supabase.auth.getUser();
+      if (!user) throw new Error("No hay sesión activa");
+
+      await createShipment(supabase, {
+        shipperId: user.id,
+        originCity: parsed.originCity,
+        originState: parsed.originState,
+        destinationCity: parsed.destinationCity,
+        destinationState: parsed.destinationState,
+        cargoDescription: parsed.cargoDescription,
+        cargoType: parsed.cargoType,
+        weightKg: parsed.weightKg,
+        volumeM3: parsed.volumeM3,
+        requiredDate: parsed.requiredDate,
+        declaredValue: parsed.declaredValue,
+        aiParsed: mode === "ai",
+        rawInput: aiInput || undefined,
+      });
+
+      setStep("published");
+    } catch (err: unknown) {
+      setPublishError(err instanceof Error ? err.message : "Error al publicar");
+    } finally {
+      setPublishing(false);
+    }
+  };
 
   return (
     <div className="max-w-2xl mx-auto">
@@ -50,16 +136,24 @@ export default function NuevoEnvioPage() {
               </button>
             ))}
           </div>
+
           {mode === "ai" ? (
             <Card><CardContent className="p-6">
               <div className="flex items-center gap-2 mb-3">
                 <Sparkles className="w-4 h-4 text-accent-500" />
                 <span className="text-sm font-medium text-ink-800">Describe tu envío en tus palabras</span>
               </div>
-              <Textarea placeholder="Ej: Necesito mover 12 toneladas de electrodomésticos de CDMX a Monterrey el 11 de febrero. Están en pallets, valor declarado aprox $850,000 pesos." value={aiInput} onChange={e => setAiInput(e.target.value)} className="min-h-[120px] mb-3 text-sm" />
+              <Textarea
+                placeholder="Ej: Necesito mover 12 toneladas de electrodomésticos de CDMX a Monterrey el 11 de febrero. Están en pallets, valor declarado aprox $850,000 pesos."
+                value={aiInput}
+                onChange={e => setAiInput(e.target.value)}
+                className="min-h-[120px] mb-3 text-sm"
+              />
               <div className="flex items-center justify-between">
                 <p className="text-xs text-ink-400">El sistema extrae automáticamente origen, destino, peso, tipo y fecha.</p>
-                <Button onClick={handleAIParse} disabled={aiInput.length < 10} className="gap-2"><Sparkles className="w-4 h-4" />Procesar</Button>
+                <Button onClick={handleAIParse} disabled={aiInput.length < 10} className="gap-2">
+                  <Sparkles className="w-4 h-4" />Procesar
+                </Button>
               </div>
               <div className="mt-4 p-3 bg-surface-50 rounded-lg border border-surface-200">
                 <p className="text-xs font-medium text-ink-600 mb-1.5">Ejemplo:</p>
@@ -69,19 +163,41 @@ export default function NuevoEnvioPage() {
           ) : (
             <Card><CardContent className="p-6 space-y-4">
               <div className="grid grid-cols-2 gap-4">
-                <div><Label className="flex items-center gap-1.5"><MapPin className="w-3.5 h-3.5 text-ink-400" />Origen</Label><Input placeholder="Ciudad de México" className="mt-1.5" /></div>
-                <div><Label>Estado origen</Label><Input placeholder="CDMX" className="mt-1.5" /></div>
-                <div><Label className="flex items-center gap-1.5"><MapPin className="w-3.5 h-3.5 text-accent-500" />Destino</Label><Input placeholder="Monterrey" className="mt-1.5" /></div>
-                <div><Label>Estado destino</Label><Input placeholder="Nuevo León" className="mt-1.5" /></div>
+                <div>
+                  <Label className="flex items-center gap-1.5"><MapPin className="w-3.5 h-3.5 text-ink-400" />Origen</Label>
+                  <Input placeholder="Ciudad de México" className="mt-1.5" value={form.originCity} onChange={setField("originCity")} />
+                </div>
+                <div>
+                  <Label>Estado origen</Label>
+                  <Input placeholder="CDMX" className="mt-1.5" value={form.originState} onChange={setField("originState")} />
+                </div>
+                <div>
+                  <Label className="flex items-center gap-1.5"><MapPin className="w-3.5 h-3.5 text-accent-500" />Destino</Label>
+                  <Input placeholder="Monterrey" className="mt-1.5" value={form.destinationCity} onChange={setField("destinationCity")} />
+                </div>
+                <div>
+                  <Label>Estado destino</Label>
+                  <Input placeholder="Nuevo León" className="mt-1.5" value={form.destinationState} onChange={setField("destinationState")} />
+                </div>
               </div>
-              <div><Label>Descripción de la carga</Label><Textarea placeholder="Electrodomésticos en pallets, cajas de cartón..." className="mt-1.5" /></div>
+              <div>
+                <Label>Descripción de la carga</Label>
+                <Textarea placeholder="Electrodomésticos en pallets, cajas de cartón..." className="mt-1.5" value={form.cargoDescription} onChange={setField("cargoDescription")} />
+              </div>
+              <div>
+                <Label>Tipo de carga</Label>
+                <Input placeholder="Electrodomésticos, Manufactura, Alimentos..." className="mt-1.5" value={form.cargoType} onChange={setField("cargoType")} />
+              </div>
               <div className="grid grid-cols-2 gap-4">
-                <div><Label>Peso total (kg)</Label><Input type="number" placeholder="12000" className="mt-1.5" /></div>
-                <div><Label>Volumen (m³)</Label><Input type="number" placeholder="60" className="mt-1.5" /></div>
-                <div><Label className="flex items-center gap-1.5"><Calendar className="w-3.5 h-3.5 text-ink-400" />Fecha requerida</Label><Input type="date" className="mt-1.5" /></div>
-                <div><Label>Valor declarado (MXN)</Label><Input type="number" placeholder="850000" className="mt-1.5" /></div>
+                <div><Label>Peso total (kg)</Label><Input type="number" placeholder="12000" className="mt-1.5" value={form.weightKg} onChange={setField("weightKg")} /></div>
+                <div><Label>Volumen (m³)</Label><Input type="number" placeholder="60" className="mt-1.5" value={form.volumeM3} onChange={setField("volumeM3")} /></div>
+                <div>
+                  <Label className="flex items-center gap-1.5"><Calendar className="w-3.5 h-3.5 text-ink-400" />Fecha requerida</Label>
+                  <Input type="date" className="mt-1.5" value={form.requiredDate} onChange={setField("requiredDate")} />
+                </div>
+                <div><Label>Valor declarado (MXN)</Label><Input type="number" placeholder="850000" className="mt-1.5" value={form.declaredValue} onChange={setField("declaredValue")} /></div>
               </div>
-              <Button onClick={handleAIParse} size="lg" className="w-full gap-2">Publicar solicitud <ArrowRight className="w-4 h-4" /></Button>
+              <Button onClick={handleFormSubmit} size="lg" className="w-full gap-2">Revisar y publicar <ArrowRight className="w-4 h-4" /></Button>
             </CardContent></Card>
           )}
         </div>
@@ -89,11 +205,13 @@ export default function NuevoEnvioPage() {
 
       {step === "confirm" && parsed && (
         <div>
-          <button onClick={() => setStep("input")} className="text-sm text-ink-400 hover:text-ink-700 mb-6 flex items-center gap-1"><ArrowLeft className="w-3.5 h-3.5" />Editar</button>
+          <button onClick={() => setStep("input")} className="text-sm text-ink-400 hover:text-ink-700 mb-6 flex items-center gap-1">
+            <ArrowLeft className="w-3.5 h-3.5" />Editar
+          </button>
           <h1 className="text-2xl font-bold text-ink-900 mb-1">Confirma los datos del envío</h1>
           <p className="text-sm text-ink-500 mb-6">Revisa que todo esté correcto antes de publicar.</p>
           <Card className="mb-6"><CardContent className="p-6">
-            <Badge variant="success" className="mb-4"><Sparkles className="w-3 h-3 mr-1" />Datos procesados por IA</Badge>
+            {mode === "ai" && <Badge variant="success" className="mb-4"><Sparkles className="w-3 h-3 mr-1" />Datos procesados por IA</Badge>}
             <div className="grid grid-cols-2 gap-4 text-sm">
               <div><p className="text-xs text-ink-400">Origen</p><p className="font-medium text-ink-900">{parsed.originCity}, {parsed.originState}</p></div>
               <div><p className="text-xs text-ink-400">Destino</p><p className="font-medium text-ink-900">{parsed.destinationCity}, {parsed.destinationState}</p></div>
@@ -102,7 +220,10 @@ export default function NuevoEnvioPage() {
               <div><p className="text-xs text-ink-400">Fecha requerida</p><p className="font-medium text-ink-900">{parsed.requiredDate}</p></div>
               <div><p className="text-xs text-ink-400">Valor declarado</p><p className="font-medium text-ink-900">${parsed.declaredValue.toLocaleString("es-MX")} MXN</p></div>
             </div>
-            <div className="mt-3 pt-3 border-t border-surface-100"><p className="text-xs text-ink-400">Descripción</p><p className="text-sm text-ink-700 mt-0.5">{parsed.cargoDescription}</p></div>
+            <div className="mt-3 pt-3 border-t border-surface-100">
+              <p className="text-xs text-ink-400">Descripción</p>
+              <p className="text-sm text-ink-700 mt-0.5">{parsed.cargoDescription}</p>
+            </div>
           </CardContent></Card>
           <div className="bg-surface-50 border border-surface-200 rounded-xl p-4 mb-6">
             <div className="flex items-start gap-3">
@@ -115,7 +236,16 @@ export default function NuevoEnvioPage() {
               </div>
             </div>
           </div>
-          <Button onClick={handlePublish} size="lg" className="w-full gap-2">Publicar solicitud de envío <ArrowRight className="w-4 h-4" /></Button>
+          {publishError && (
+            <p className="text-sm text-red-600 bg-red-50 border border-red-200 rounded-lg px-3 py-2 mb-4">{publishError}</p>
+          )}
+          <Button onClick={handlePublish} size="lg" className="w-full gap-2" disabled={publishing}>
+            {publishing ? (
+              <><span className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" />Publicando...</>
+            ) : (
+              <>Publicar solicitud de envío <ArrowRight className="w-4 h-4" /></>
+            )}
+          </Button>
         </div>
       )}
 
@@ -125,10 +255,16 @@ export default function NuevoEnvioPage() {
             <CheckCircle2 className="w-8 h-8 text-trust-green" />
           </div>
           <h2 className="text-xl font-bold text-ink-900 mb-2">Solicitud publicada</h2>
-          <p className="text-sm text-ink-500 mb-6 max-w-sm mx-auto">ZzingRush está buscando transportistas con rutas de retorno compatibles. Te notificamos cuando haya coincidencias.</p>
+          <p className="text-sm text-ink-500 mb-6 max-w-sm mx-auto">
+            ZzingRush está buscando transportistas con rutas de retorno compatibles. Te notificamos cuando haya coincidencias.
+          </p>
           <div className="flex flex-col sm:flex-row gap-3 justify-center">
-            <Button asChild variant="outline"><Link href="/app/embarcador/envios/nuevo">Crear otro envío</Link></Button>
-            <Button asChild><Link href="/app/embarcador">Ir al dashboard <ArrowRight className="w-4 h-4" /></Link></Button>
+            <Button variant="outline" onClick={() => { setParsed(null); setAiInput(""); setForm({ originCity: "", originState: "", destinationCity: "", destinationState: "", cargoDescription: "", cargoType: "", weightKg: "", volumeM3: "", requiredDate: "", declaredValue: "" }); setStep("input"); }}>
+              Crear otro envío
+            </Button>
+            <Button onClick={() => router.push("/app/embarcador")}>
+              Ir al dashboard <ArrowRight className="w-4 h-4" />
+            </Button>
           </div>
         </div>
       )}

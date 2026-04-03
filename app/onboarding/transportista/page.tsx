@@ -1,5 +1,6 @@
 "use client";
 import { useState } from "react";
+import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { ArrowRight, ArrowLeft, CheckCircle2, TruckIcon, Building2, FileText, Shield, CreditCard, Camera } from "lucide-react";
 import { Button } from "@/components/ui/button";
@@ -7,6 +8,8 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Progress } from "@/components/ui/progress";
 import { cn } from "@/lib/utils";
+import { createClient } from "@/lib/supabase/client";
+import { createCarrierProfile, markOnboardingComplete } from "@/lib/supabase/queries";
 
 const steps = [
   { id: "tipo", label: "Tipo de operador", icon: Building2 },
@@ -21,8 +24,16 @@ type StepId = "tipo" | "verificacion" | "unidad" | "documentos" | "cobros" | "co
 const stepOrder: StepId[] = ["tipo", "verificacion", "unidad", "documentos", "cobros", "completo"];
 
 export default function TransportistaOnboardingPage() {
+  const router = useRouter();
   const [currentStep, setCurrentStep] = useState<StepId>("tipo");
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  // Controlled state for fields we persist
   const [operatorType, setOperatorType] = useState<"empresa" | "independiente" | null>(null);
+  const [licenseNumber, setLicenseNumber] = useState("");
+  const [operatingState, setOperatingState] = useState("");
+
   const stepIndex = stepOrder.indexOf(currentStep);
   const progress = ((stepIndex + 1) / stepOrder.length) * 100;
 
@@ -31,6 +42,30 @@ export default function TransportistaOnboardingPage() {
   };
   const goBack = () => {
     if (stepIndex > 0) setCurrentStep(stepOrder[stepIndex - 1]);
+  };
+
+  const handleFinalizar = async () => {
+    setError(null);
+    setSaving(true);
+    try {
+      const supabase = createClient();
+      const { data: { user } } = await supabase.auth.getUser();
+      if (!user) throw new Error("No hay sesión activa");
+
+      await createCarrierProfile(supabase, {
+        userId: user.id,
+        operatorType: operatorType ?? "independiente",
+        licenseNumber,
+        operatingStates: operatingState ? [operatingState] : [],
+      });
+
+      await markOnboardingComplete(supabase, user.id);
+      goNext();
+    } catch (err: unknown) {
+      setError(err instanceof Error ? err.message : "Error al guardar");
+    } finally {
+      setSaving(false);
+    }
   };
 
   return (
@@ -50,7 +85,6 @@ export default function TransportistaOnboardingPage() {
 
       <div className="flex-1 flex items-center justify-center px-4 py-12">
         <div className="w-full max-w-lg">
-          {/* Step indicators - scrollable on mobile */}
           <div className="flex items-center justify-center gap-1.5 mb-10 overflow-x-auto pb-2 scrollbar-hide">
             {steps.map((step, i) => {
               const Icon = step.icon;
@@ -132,11 +166,11 @@ export default function TransportistaOnboardingPage() {
                   </div>
                   <div>
                     <Label>Número de licencia de conducir</Label>
-                    <Input placeholder="LIC-JAL-88432" className="mt-1.5" />
+                    <Input placeholder="LIC-JAL-88432" className="mt-1.5" value={licenseNumber} onChange={e => setLicenseNumber(e.target.value)} />
                   </div>
                   <div>
                     <Label>Estado donde opera principalmente</Label>
-                    <Input placeholder="Jalisco, CDMX, Nuevo León..." className="mt-1.5" />
+                    <Input placeholder="Jalisco, CDMX, Nuevo León..." className="mt-1.5" value={operatingState} onChange={e => setOperatingState(e.target.value)} />
                   </div>
                   <div className="bg-accent-50 border border-accent-200 rounded-lg p-3">
                     <p className="text-xs text-accent-700 font-medium mb-1">Próximo paso: documentos</p>
@@ -158,43 +192,19 @@ export default function TransportistaOnboardingPage() {
                     <Label>Tipo de unidad</Label>
                     <div className="mt-2 grid grid-cols-3 gap-2">
                       {["Camioneta", "Rabón", "Torton", "Trailer", "Full", "Otro"].map((type) => (
-                        <button
-                          key={type}
-                          type="button"
-                          className="text-xs px-3 py-2 rounded-lg border border-surface-200 text-ink-600 hover:border-accent-400 hover:bg-accent-50 hover:text-accent-700 transition-colors"
-                        >
-                          {type}
-                        </button>
+                        <button key={type} type="button" className="text-xs px-3 py-2 rounded-lg border border-surface-200 text-ink-600 hover:border-accent-400 hover:bg-accent-50 hover:text-accent-700 transition-colors">{type}</button>
                       ))}
                     </div>
                   </div>
                   <div className="grid grid-cols-2 gap-3">
-                    <div>
-                      <Label>Marca</Label>
-                      <Input placeholder="International" className="mt-1.5" />
-                    </div>
-                    <div>
-                      <Label>Modelo</Label>
-                      <Input placeholder="ProStar" className="mt-1.5" />
-                    </div>
-                    <div>
-                      <Label>Año</Label>
-                      <Input type="number" placeholder="2021" className="mt-1.5" min={2000} max={2025} />
-                    </div>
-                    <div>
-                      <Label>Placas</Label>
-                      <Input placeholder="JLA-123-B" className="mt-1.5 uppercase" />
-                    </div>
+                    <div><Label>Marca</Label><Input placeholder="International" className="mt-1.5" /></div>
+                    <div><Label>Modelo</Label><Input placeholder="ProStar" className="mt-1.5" /></div>
+                    <div><Label>Año</Label><Input type="number" placeholder="2021" className="mt-1.5" min={2000} max={2030} /></div>
+                    <div><Label>Placas</Label><Input placeholder="JLA-123-B" className="mt-1.5 uppercase" /></div>
                   </div>
                   <div className="grid grid-cols-2 gap-3">
-                    <div>
-                      <Label>Capacidad (kg)</Label>
-                      <Input type="number" placeholder="18000" className="mt-1.5" />
-                    </div>
-                    <div>
-                      <Label>Capacidad (m³)</Label>
-                      <Input type="number" placeholder="90" className="mt-1.5" />
-                    </div>
+                    <div><Label>Capacidad (kg)</Label><Input type="number" placeholder="18000" className="mt-1.5" /></div>
+                    <div><Label>Capacidad (m³)</Label><Input type="number" placeholder="90" className="mt-1.5" /></div>
                   </div>
                 </div>
               </div>
@@ -294,22 +304,34 @@ export default function TransportistaOnboardingPage() {
                     ))}
                   </div>
                 </div>
-                <Button asChild size="lg" className="w-full">
-                  <Link href="/app/transportista">
-                    Ir a mi panel <ArrowRight className="w-4 h-4" />
-                  </Link>
+                <Button size="lg" className="w-full" onClick={() => router.push("/app/transportista")}>
+                  Ir a mi panel <ArrowRight className="w-4 h-4" />
                 </Button>
               </div>
             )}
 
+            {error && (
+              <p className="mt-4 text-sm text-red-600 bg-red-50 border border-red-200 rounded-lg px-3 py-2">{error}</p>
+            )}
+
             {currentStep !== "completo" && (
               <div className="flex items-center justify-between mt-8 pt-6 border-t border-surface-100">
-                <Button variant="ghost" onClick={goBack} disabled={stepIndex === 0} className="gap-2">
+                <Button variant="ghost" onClick={goBack} disabled={stepIndex === 0 || saving} className="gap-2">
                   <ArrowLeft className="w-4 h-4" /> Atrás
                 </Button>
-                <Button onClick={goNext} disabled={currentStep === "tipo" && !operatorType} className="gap-2">
-                  {stepIndex === stepOrder.length - 2 ? "Finalizar" : "Continuar"} <ArrowRight className="w-4 h-4" />
-                </Button>
+                {stepIndex === stepOrder.length - 2 ? (
+                  <Button onClick={handleFinalizar} disabled={saving} className="gap-2">
+                    {saving ? (
+                      <><span className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" />Guardando...</>
+                    ) : (
+                      <>Finalizar <ArrowRight className="w-4 h-4" /></>
+                    )}
+                  </Button>
+                ) : (
+                  <Button onClick={goNext} disabled={currentStep === "tipo" && !operatorType} className="gap-2">
+                    Continuar <ArrowRight className="w-4 h-4" />
+                  </Button>
+                )}
               </div>
             )}
           </div>
