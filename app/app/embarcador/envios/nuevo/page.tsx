@@ -12,37 +12,22 @@ import { Badge } from "@/components/ui/badge";
 import { cn } from "@/lib/utils";
 import { createClient } from "@/lib/supabase/client";
 import { createShipment } from "@/lib/supabase/queries";
+import type { AIParseResponse, MissingField, ParsedShipment } from "@/lib/ai/types";
 
 type InputMode = "ai" | "form";
 
-interface ParsedData {
-  originCity: string;
-  originState: string;
-  destinationCity: string;
-  destinationState: string;
-  cargoDescription: string;
-  cargoType: string;
-  weightKg: number;
-  volumeM3?: number;
-  requiredDate: string;
-  declaredValue: number;
-}
-
-const aiExample: ParsedData = {
-  originCity: "Ciudad de México", originState: "CDMX",
-  destinationCity: "Monterrey", destinationState: "Nuevo León",
-  cargoDescription: "Electrodomésticos — refrigeradores y lavadoras en pallets",
-  cargoType: "Electrodomésticos", weightKg: 12000, volumeM3: 60,
-  requiredDate: new Date(Date.now() + 7 * 86400000).toISOString().split("T")[0],
-  declaredValue: 850000,
-};
+// Re-export ParsedShipment as local alias for backwards compatibility
+type ParsedData = ParsedShipment & { declaredValue: number };
 
 export default function NuevoEnvioPage() {
   const router = useRouter();
   const [mode, setMode] = useState<InputMode>("ai");
   const [aiInput, setAiInput] = useState("");
   const [parsed, setParsed] = useState<ParsedData | null>(null);
+  const [missingFields, setMissingFields] = useState<MissingField[]>([]);
   const [step, setStep] = useState<"input" | "confirm" | "published">("input");
+  const [aiLoading, setAiLoading] = useState(false);
+  const [aiError, setAiError] = useState<string | null>(null);
   const [publishing, setPublishing] = useState(false);
   const [publishError, setPublishError] = useState<string | null>(null);
 
@@ -58,10 +43,31 @@ export default function NuevoEnvioPage() {
   const setField = (key: keyof typeof form) => (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement>) =>
     setForm(f => ({ ...f, [key]: e.target.value }));
 
-  const handleAIParse = () => {
-    // Mock AI parse — will be replaced with real Claude API in Phase 2
-    setParsed({ ...aiExample, rawInput: aiInput } as ParsedData & { rawInput?: string });
-    setStep("confirm");
+  const handleAIParse = async () => {
+    setAiError(null);
+    setAiLoading(true);
+    try {
+      const res = await fetch("/api/ai/parse-shipment", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ text: aiInput }),
+      });
+      const data: AIParseResponse = await res.json();
+      if (!data.success) {
+        setAiError(data.error);
+        return;
+      }
+      setParsed({
+        ...data.parsed,
+        declaredValue: data.parsed.declaredValue ?? 0,
+      });
+      setMissingFields(data.missingFields);
+      setStep("confirm");
+    } catch {
+      setAiError("Error de conexión. Verifica tu internet e intenta de nuevo.");
+    } finally {
+      setAiLoading(false);
+    }
   };
 
   const handleFormSubmit = () => {
@@ -149,10 +155,17 @@ export default function NuevoEnvioPage() {
                 onChange={e => setAiInput(e.target.value)}
                 className="min-h-[120px] mb-3 text-sm"
               />
+              {aiError && (
+                <p className="text-sm text-red-600 bg-red-50 border border-red-200 rounded-lg px-3 py-2 mb-3">{aiError}</p>
+              )}
               <div className="flex items-center justify-between">
                 <p className="text-xs text-ink-400">El sistema extrae automáticamente origen, destino, peso, tipo y fecha.</p>
-                <Button onClick={handleAIParse} disabled={aiInput.length < 10} className="gap-2">
-                  <Sparkles className="w-4 h-4" />Procesar
+                <Button onClick={handleAIParse} disabled={aiInput.length < 10 || aiLoading} className="gap-2">
+                  {aiLoading ? (
+                    <><span className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" />Procesando...</>
+                  ) : (
+                    <><Sparkles className="w-4 h-4" />Procesar</>
+                  )}
                 </Button>
               </div>
               <div className="mt-4 p-3 bg-surface-50 rounded-lg border border-surface-200">
@@ -225,6 +238,19 @@ export default function NuevoEnvioPage() {
               <p className="text-sm text-ink-700 mt-0.5">{parsed.cargoDescription}</p>
             </div>
           </CardContent></Card>
+          {missingFields.length > 0 && mode === "ai" && (
+            <div className="bg-amber-50 border border-amber-200 rounded-xl p-4 mb-4">
+              <p className="text-xs font-semibold text-amber-800 mb-2">Datos pendientes — puedes completarlos antes de publicar:</p>
+              <ul className="space-y-1">
+                {missingFields.map((mf) => (
+                  <li key={mf.field} className="text-xs text-amber-700 flex items-start gap-1.5">
+                    <span className="mt-0.5">·</span>{mf.question}
+                  </li>
+                ))}
+              </ul>
+            </div>
+          )}
+
           <div className="bg-surface-50 border border-surface-200 rounded-xl p-4 mb-6">
             <div className="flex items-start gap-3">
               <Shield className="w-4 h-4 text-accent-500 flex-shrink-0 mt-0.5" />

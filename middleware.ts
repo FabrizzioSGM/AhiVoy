@@ -1,6 +1,13 @@
 import { createServerClient } from "@supabase/ssr";
 import { NextResponse, type NextRequest } from "next/server";
 
+// Rutas que requieren verificación de rol (no marketing ni estáticas)
+const ROLE_PROTECTED = ["/app/", "/admin", "/onboarding/"];
+
+function requiresRoleCheck(pathname: string) {
+  return ROLE_PROTECTED.some((prefix) => pathname.startsWith(prefix));
+}
+
 export async function middleware(request: NextRequest) {
   let supabaseResponse = NextResponse.next({ request });
 
@@ -25,29 +32,101 @@ export async function middleware(request: NextRequest) {
     }
   );
 
-  // Refresh session — keeps auth tokens alive
+  // Siempre refrescar la sesión primero
   const {
     data: { user },
   } = await supabase.auth.getUser();
 
-  // Protect /app routes — redirect to /login if not authenticated
-  if (
-    !user &&
-    request.nextUrl.pathname.startsWith("/app")
-  ) {
+  const path = request.nextUrl.pathname;
+
+  // ── Usuarios NO autenticados ─────────────────────────────────────────────
+  if (!user) {
+    // Proteger /app/* y /admin
+    if (path.startsWith("/app/") || path.startsWith("/admin")) {
+      const url = request.nextUrl.clone();
+      url.pathname = "/login";
+      return NextResponse.redirect(url);
+    }
+    // Proteger onboarding (no tiene sentido sin sesión)
+    if (path.startsWith("/onboarding/")) {
+      const url = request.nextUrl.clone();
+      url.pathname = "/login";
+      return NextResponse.redirect(url);
+    }
+    return supabaseResponse;
+  }
+
+  // ── Usuarios autenticados — obtener rol y estado de onboarding ───────────
+  // Solo consultar BD si la ruta lo requiere (no en marketing pages)
+  let role: string | null = null;
+  let onboardingCompleted = true;
+
+  if (requiresRoleCheck(path) || path === "/login" || path === "/registro") {
+    const { data: profile } = await supabase
+      .from("profiles")
+      .select("role, onboarding_completed")
+      .eq("id", user.id)
+      .single();
+
+    role = profile?.role ?? null;
+    onboardingCompleted = profile?.onboarding_completed ?? false;
+  }
+
+  // Helper para redirigir al dashboard según rol
+  const dashboardFor = (r: string | null) =>
+    r === "transportista"
+      ? "/app/transportista"
+      : r === "admin"
+      ? "/admin"
+      : "/app/embarcador";
+
+  // ── Sacar a usuarios autenticados de /login y /registro ─────────────────
+  if (path === "/login" || path === "/registro") {
     const url = request.nextUrl.clone();
-    url.pathname = "/login";
+    url.pathname = dashboardFor(role);
     return NextResponse.redirect(url);
   }
 
-  // Redirect authenticated users away from /login and /registro
-  if (
-    user &&
-    (request.nextUrl.pathname === "/login" ||
-      request.nextUrl.pathname === "/registro")
-  ) {
+  // ── Forzar onboarding si no está completado ──────────────────────────────
+  if (!onboardingCompleted && path.startsWith("/app/")) {
+    const targetOnboarding =
+      role === "transportista"
+        ? "/onboarding/transportista"
+        : "/onboarding/embarcador";
+
+    // Evitar loop infinito si ya está en la ruta de onboarding correcta
+    if (path !== targetOnboarding) {
+      const url = request.nextUrl.clone();
+      url.pathname = targetOnboarding;
+      return NextResponse.redirect(url);
+    }
+  }
+
+  // ── Redirigir desde onboarding si ya está completado ─────────────────────
+  if (onboardingCompleted && path.startsWith("/onboarding/")) {
     const url = request.nextUrl.clone();
-    url.pathname = "/app/embarcador"; // will be overridden by role once profile is read
+    url.pathname = dashboardFor(role);
+    return NextResponse.redirect(url);
+  }
+
+  // ── Proteger /admin — solo rol "admin" ───────────────────────────────────
+  if (path.startsWith("/admin") && role !== "admin") {
+    const url = request.nextUrl.clone();
+    url.pathname = dashboardFor(role);
+    return NextResponse.redirect(url);
+  }
+
+  // ── Proteger rutas de embarcador — solo rol "embarcador" ─────────────────
+  if (path.startsWith("/app/embarcador") && role !== "embarcador") {
+    const url = request.nextUrl.clone();
+    url.pathname = dashboardFor(role);
+    return NextResponse.redirect(url);
+  }
+
+  // ── Proteger rutas de transportista — solo rol "transportista" ───────────
+  if (path.startsWith("/app/transportista") && role !== "transportista") {
+    const url = request.nextUrl.clone();
+    url.pathname = dashboardFor(role);
     return NextResponse.redirect(url);
   }
 
@@ -56,13 +135,6 @@ export async function middleware(request: NextRequest) {
 
 export const config = {
   matcher: [
-    /*
-     * Match all request paths except:
-     * - _next/static (static files)
-     * - _next/image (image optimization)
-     * - favicon.ico, sitemap.xml, robots.txt
-     * - public folder assets
-     */
     "/((?!_next/static|_next/image|favicon.ico|.*\\.(?:svg|png|jpg|jpeg|gif|webp)$).*)",
   ],
 };

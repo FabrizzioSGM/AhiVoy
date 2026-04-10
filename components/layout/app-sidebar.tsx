@@ -18,26 +18,19 @@ interface SidebarNavItem {
 
 const shipperNav: SidebarNavItem[] = [
   { href: "/app/embarcador", label: "Dashboard", icon: LayoutDashboard },
-  { href: "/app/embarcador/envios", label: "Mis envíos", icon: Package, badge: 2 },
-  { href: "/app/embarcador/coincidencias", label: "Coincidencias", icon: Handshake, badge: 1 },
-  { href: "/app/embarcador/seguimiento", label: "Seguimiento", icon: MapPin },
-  { href: "/app/embarcador/reputacion", label: "Reputación", icon: Star },
-  { href: "/app/embarcador/documentos", label: "Documentos", icon: FileText },
+  { href: "/app/embarcador/envios/nuevo", label: "Nuevo envío", icon: Package },
+  { href: "/app/embarcador/coincidencias", label: "Coincidencias", icon: Handshake },
 ];
 
 const carrierNav: SidebarNavItem[] = [
   { href: "/app/transportista", label: "Dashboard", icon: LayoutDashboard },
-  { href: "/app/transportista/rutas", label: "Mis rutas", icon: Route },
-  { href: "/app/transportista/coincidencias", label: "Cargas disponibles", icon: Handshake, badge: 3 },
-  { href: "/app/transportista/seguimiento", label: "Seguimiento", icon: MapPin },
-  { href: "/app/transportista/cobros", label: "Cobros", icon: CreditCard },
+  { href: "/app/transportista/rutas/nueva", label: "Nueva ruta", icon: Route },
+  { href: "/app/transportista/coincidencias", label: "Coincidencias", icon: Handshake },
   { href: "/app/transportista/reputacion", label: "Reputación", icon: Star },
 ];
 
 const bottomNav: SidebarNavItem[] = [
   { href: "/app/verificacion", label: "Verificación", icon: ShieldCheck },
-  { href: "/app/soporte", label: "Soporte", icon: HelpCircle },
-  { href: "/app/configuracion", label: "Configuración", icon: Settings },
 ];
 
 interface AppSidebarProps {

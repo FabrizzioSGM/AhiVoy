@@ -11,6 +11,7 @@ import {
   getCarrierProfileByUserId,
   getRoutesByCarrierId,
   getPublishedShipments,
+  getMatchesByCarrier,
   getNotifications,
 } from "@/lib/supabase/queries";
 import { formatCurrency, formatDate, formatWeight } from "@/lib/utils";
@@ -28,8 +29,9 @@ export default async function TransportistaDashboard() {
 
   const carrierProfile = user ? await getCarrierProfileByUserId(supabase, user.id) : null;
 
-  const [routes, availableShipments, notifications] = await Promise.all([
+  const [routes, carrierMatches, availableShipments, notifications] = await Promise.all([
     carrierProfile ? getRoutesByCarrierId(supabase, carrierProfile.id) : Promise.resolve([]),
+    carrierProfile ? getMatchesByCarrier(supabase, carrierProfile.id) : Promise.resolve([]),
     getPublishedShipments(supabase),
     user ? getNotifications(supabase, user.id) : Promise.resolve([]),
   ]);
@@ -68,7 +70,7 @@ export default async function TransportistaDashboard() {
 
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-4 mb-8">
         <StatCard title="Rutas activas" value={String(activeRoutes.length)} subtitle={`${routes.length} en total`} icon={Route} />
-        <StatCard title="Cargas disponibles" value={String(availableShipments.length)} subtitle="Publicadas en la plataforma" icon={Package} accent />
+        <StatCard title="Coincidencias" value={String(carrierMatches.length)} subtitle="con tus rutas de retorno" icon={Zap} accent />
         <StatCard title="Ganancia total" value={formatCurrency(0)} subtitle="Pagos completados" icon={DollarSign} />
         <StatCard title="Calificación" value={carrierProfile ? `${carrierProfile.avg_rating} / 5` : "—"} subtitle={carrierProfile ? `${carrierProfile.total_trips} viajes` : "Sin viajes aún"} icon={Star} />
       </div>
@@ -125,11 +127,66 @@ export default async function TransportistaDashboard() {
             </CardContent>
           </Card>
 
+          {/* Coincidencias personalizadas (matching automático) */}
           <Card>
             <CardHeader className="flex-row items-center justify-between pb-4">
-              <CardTitle className="text-base">Cargas disponibles para ti</CardTitle>
+              <CardTitle className="text-base">Coincidencias con tus rutas</CardTitle>
+              {carrierMatches.length > 0 && <Badge variant="warning">{carrierMatches.length} nueva{carrierMatches.length !== 1 ? "s" : ""}</Badge>}
+            </CardHeader>
+            <CardContent className="p-0">
+              {carrierMatches.length === 0 ? (
+                <div className="px-6 py-10 text-center">
+                  <Zap className="w-8 h-8 text-ink-200 mx-auto mb-3" />
+                  <p className="text-sm text-ink-400">Sin coincidencias aún.</p>
+                  <p className="text-xs text-ink-300 mt-1">Cuando publiques una ruta, ZzingRush buscará cargas compatibles automáticamente.</p>
+                </div>
+              ) : (
+                <div className="divide-y divide-surface-100">
+                  {carrierMatches.map((match) => {
+                    const shipment = match.shipment_requests as Record<string, unknown> | null;
+                    return (
+                      <div key={match.id} className="flex items-center gap-4 px-6 py-4 hover:bg-surface-50">
+                        <div className="w-10 h-10 rounded-full bg-accent-50 flex items-center justify-center flex-shrink-0 flex-col">
+                          <span className="text-xs font-bold text-accent-700 leading-none">{match.match_score}</span>
+                          <span className="text-[9px] text-accent-500 leading-none">pts</span>
+                        </div>
+                        <div className="flex-1 min-w-0">
+                          {shipment && (
+                            <RouteDisplay
+                              originCity={String(shipment.origin_city ?? "")}
+                              originState={String(shipment.origin_state ?? "")}
+                              destinationCity={String(shipment.destination_city ?? "")}
+                              destinationState={String(shipment.destination_state ?? "")}
+                              size="sm"
+                            />
+                          )}
+                          <div className="flex items-center gap-3 text-xs text-ink-400 mt-1">
+                            {shipment && <span>{formatWeight(Number(shipment.weight_kg ?? 0))}</span>}
+                            {shipment && <><span>·</span><span>{String(shipment.cargo_type ?? "")}</span></>}
+                            {shipment && <><span>·</span><span>{formatDate(String(shipment.required_date ?? ""))}</span></>}
+                          </div>
+                        </div>
+                        <div className="text-right flex-shrink-0">
+                          <p className="text-sm font-semibold text-trust-green">{formatCurrency(match.carrier_earnings)}</p>
+                          <p className="text-xs text-ink-400">ganancia neta</p>
+                          <Button asChild size="sm" className="mt-1">
+                            <Link href={`/app/transportista/coincidencias/${match.id}`}>Ver</Link>
+                          </Button>
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              )}
+            </CardContent>
+          </Card>
+
+          {/* Feed general de cargas publicadas */}
+          <Card>
+            <CardHeader className="flex-row items-center justify-between pb-4">
+              <CardTitle className="text-base">Todas las cargas disponibles</CardTitle>
               {availableShipments.length > 0 && (
-                <Badge variant="default" className="text-xs">{availableShipments.length} compatibles</Badge>
+                <Badge variant="default" className="text-xs">{availableShipments.length} publicadas</Badge>
               )}
             </CardHeader>
             <CardContent className="p-0">
@@ -141,8 +198,8 @@ export default async function TransportistaDashboard() {
                 <div className="divide-y divide-surface-100">
                   {availableShipments.map((shipment) => (
                     <div key={shipment.id} className="flex items-center gap-4 px-6 py-4 hover:bg-surface-50">
-                      <div className="w-10 h-10 rounded-full bg-accent-50 flex items-center justify-center flex-shrink-0">
-                        <Zap className="w-4 h-4 text-accent-600" />
+                      <div className="w-10 h-10 rounded-full bg-surface-100 flex items-center justify-center flex-shrink-0">
+                        <Package className="w-4 h-4 text-ink-400" />
                       </div>
                       <div className="flex-1 min-w-0">
                         <RouteDisplay

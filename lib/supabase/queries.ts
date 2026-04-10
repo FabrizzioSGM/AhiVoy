@@ -153,6 +153,15 @@ export async function createShipment(
     .single();
 
   if (error) throw error;
+
+  // Disparar matching automático (best-effort — no bloquea si falla)
+  if (shipment?.id) {
+    supabase.rpc("find_matches_for_shipment", { p_shipment_id: shipment.id })
+      .then(({ error: matchErr }) => {
+        if (matchErr) console.warn("[matching] find_matches_for_shipment:", matchErr.message);
+      });
+  }
+
   return shipment;
 }
 
@@ -198,13 +207,22 @@ export async function createRoute(
       available_capacity_m3: data.availableCapacityM3 || null,
       price_per_km: data.pricePerKm || null,
       accepted_cargo_types: data.acceptedCargoTypes,
-      estimated_distance: 0, // placeholder — real distance calc is Phase 2
+      estimated_distance: 0, // placeholder — real distance calc es Phase 3
       status: "published",
     })
     .select()
     .single();
 
   if (error) throw error;
+
+  // Disparar matching automático (best-effort)
+  if (route?.id) {
+    supabase.rpc("find_matches_for_route", { p_route_id: route.id })
+      .then(({ error: matchErr }) => {
+        if (matchErr) console.warn("[matching] find_matches_for_route:", matchErr.message);
+      });
+  }
+
   return route;
 }
 
@@ -223,12 +241,82 @@ export async function getRoutesByCarrierId(supabase: SupabaseClient, carrierId: 
 export async function getMatchesByShipper(supabase: SupabaseClient, shipperId: string) {
   const { data } = await supabase
     .from("matches")
-    .select("*, shipment_requests(*)")
+    .select(`
+      *,
+      shipment_requests(*),
+      return_routes(
+        origin_city, origin_state, destination_city, destination_state,
+        departure_date_from, departure_date_to, accepted_cargo_types
+      )
+    `)
     .eq("shipper_id", shipperId)
     .in("status", ["suggested", "viewed", "negotiating"])
+    .order("match_score", { ascending: false })
     .order("created_at", { ascending: false })
     .limit(5);
   return data ?? [];
+}
+
+export async function getMatchesByCarrier(supabase: SupabaseClient, carrierId: string) {
+  const { data } = await supabase
+    .from("matches")
+    .select(`
+      *,
+      shipment_requests(
+        origin_city, origin_state, destination_city, destination_state,
+        cargo_type, weight_kg, volume_m3, required_date, cargo_description
+      ),
+      return_routes(origin_city, origin_state, destination_city, destination_state)
+    `)
+    .eq("carrier_id", carrierId)
+    .in("status", ["suggested", "viewed", "negotiating"])
+    .order("match_score", { ascending: false })
+    .order("created_at", { ascending: false })
+    .limit(5);
+  return data ?? [];
+}
+
+export async function getMatchById(supabase: SupabaseClient, matchId: string) {
+  const { data: match } = await supabase
+    .from("matches")
+    .select(`
+      *,
+      shipment_requests(*),
+      return_routes(*)
+    `)
+    .eq("id", matchId)
+    .single();
+
+  if (!match) return null;
+
+  // Fetch carrier profile + name separately (carrier_profiles.user_id → auth.users, not profiles directly)
+  const { data: carrierProfile } = await supabase
+    .from("carrier_profiles")
+    .select("*")
+    .eq("id", match.carrier_id)
+    .single();
+
+  const { data: carrierProfileData } = carrierProfile?.user_id
+    ? await supabase.from("profiles").select("name").eq("id", carrierProfile.user_id).single()
+    : { data: null };
+
+  return {
+    ...match,
+    carrier_profile: carrierProfile ?? null,
+    carrier_name: carrierProfileData?.name ?? "Transportista",
+  };
+}
+
+export async function updateMatchStatus(
+  supabase: SupabaseClient,
+  matchId: string,
+  status: "viewed" | "negotiating" | "accepted" | "rejected"
+) {
+  const { error } = await supabase
+    .from("matches")
+    .update({ status })
+    .eq("id", matchId);
+  if (error) throw error;
 }
 
 // ─── Notifications ────────────────────────────────────────────────────────────
