@@ -109,8 +109,8 @@ export async function middleware(request: NextRequest) {
     return NextResponse.redirect(url);
   }
 
-  // ── Proteger /admin — solo rol "admin" ───────────────────────────────────
-  if (path.startsWith("/admin") && role !== "admin") {
+  // ── Proteger /admin y /app/admin — solo rol "admin" ──────────────────────
+  if ((path.startsWith("/admin") || path.startsWith("/app/admin")) && role !== "admin") {
     const url = request.nextUrl.clone();
     url.pathname = dashboardFor(role);
     return NextResponse.redirect(url);

@@ -1,16 +1,27 @@
 import Link from "next/link";
-import { ArrowLeft, Shield, Lock, ArrowRight, CheckCircle2 } from "lucide-react";
+import { notFound } from "next/navigation";
+import { ArrowLeft, Shield, Lock } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { Separator } from "@/components/ui/separator";
-import { seedMatches } from "@/lib/seed-data";
+import { createClient } from "@/lib/supabase/server";
 import { formatCurrency } from "@/lib/utils";
+import { ConfirmEscrowButton } from "./confirm-button";
 
-export default function PagoEscrowPage({ params }: { params: { id: string } }) {
-  const match = seedMatches.find(m => m.id === params.id) ?? seedMatches[0];
-  const platformFee = Math.round(match.estimatedPrice * 0.035);
+export default async function PagoEscrowPage({ params }: { params: { id: string } }) {
+  const supabase = await createClient();
+  const { data: match } = await supabase
+    .from("matches")
+    .select("id, estimated_price, shipper_savings, match_score, status")
+    .eq("id", params.id)
+    .single();
+
+  if (!match) notFound();
+
+  const price = Number(match.estimated_price);
+  const platformFee = Math.round(price * 0.035);
   const iva = Math.round(platformFee * 0.16);
-  const total = match.estimatedPrice + platformFee + iva;
+  const total = price + platformFee + iva;
 
   return (
     <div className="max-w-2xl mx-auto">
@@ -33,7 +44,7 @@ export default function PagoEscrowPage({ params }: { params: { id: string } }) {
       <Card className="mb-6"><CardContent className="p-6">
         <p className="text-sm font-semibold text-ink-700 mb-4">Resumen de la operación</p>
         <div className="space-y-3">
-          <div className="flex justify-between text-sm"><span className="text-ink-600">Servicio de flete</span><span className="font-medium">{formatCurrency(match.estimatedPrice)}</span></div>
+          <div className="flex justify-between text-sm"><span className="text-ink-600">Servicio de flete</span><span className="font-medium">{formatCurrency(price)}</span></div>
           <div className="flex justify-between text-sm"><span className="text-ink-600">Comisión ZzingRush (3.5%)</span><span className="font-medium">{formatCurrency(platformFee)}</span></div>
           <div className="flex justify-between text-sm"><span className="text-ink-600">IVA sobre comisión (16%)</span><span className="font-medium">{formatCurrency(iva)}</span></div>
           <Separator />
@@ -57,9 +68,7 @@ export default function PagoEscrowPage({ params }: { params: { id: string } }) {
         <Shield className="w-4 h-4 text-trust-green flex-shrink-0 mt-0.5" />
         <p>Al confirmar, aceptas que los fondos queden en custodia hasta completar la operación. ZzingRush no libera el pago sin tu confirmación o resolución de disputa.</p>
       </div>
-      <Button asChild size="lg" className="w-full gap-2">
-        <Link href="/app/embarcador/seguimiento/s-3"><Shield className="w-4 h-4" />Confirmar y depositar {formatCurrency(total)} en custodia<ArrowRight className="w-4 h-4" /></Link>
-      </Button>
+      <ConfirmEscrowButton matchId={params.id} total={total} />
     </div>
   );
 }

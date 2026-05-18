@@ -96,7 +96,7 @@ export async function getProfile(userId: string) {
 export async function sendPasswordReset(email: string) {
   const supabase = createClient();
   const { error } = await supabase.auth.resetPasswordForEmail(email, {
-    redirectTo: `${process.env.NEXT_PUBLIC_APP_URL}/auth/update-password`,
+    redirectTo: `${process.env.NEXT_PUBLIC_APP_URL}/update-password`,
   });
   if (error) throw error;
 }

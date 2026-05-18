@@ -158,7 +158,15 @@ export default function LoginPage() {
                 <Button
                   variant="outline"
                   size="sm"
-                  onClick={() => router.push("/app/embarcador")}
+                  onClick={async () => {
+                    setError(null);
+                    setLoading(true);
+                    try {
+                      const { user } = await signIn({ email: "test-embarcador@zzingrush.test", password: "Test1234!" });
+                      router.push("/app/embarcador");
+                    } catch { setError("Cuenta demo no disponible."); setLoading(false); }
+                  }}
+                  disabled={loading}
                   className="text-xs"
                 >
                   Ver demo embarcador
@@ -166,7 +174,15 @@ export default function LoginPage() {
                 <Button
                   variant="outline"
                   size="sm"
-                  onClick={() => router.push("/app/transportista")}
+                  onClick={async () => {
+                    setError(null);
+                    setLoading(true);
+                    try {
+                      const { user } = await signIn({ email: "test-transportista@zzingrush.test", password: "Test1234!" });
+                      router.push("/app/transportista");
+                    } catch { setError("Cuenta demo no disponible."); setLoading(false); }
+                  }}
+                  disabled={loading}
                   className="text-xs"
                 >
                   Ver demo transportista

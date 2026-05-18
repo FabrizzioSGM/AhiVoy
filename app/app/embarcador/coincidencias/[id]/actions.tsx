@@ -4,8 +4,7 @@ import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { Shield, X } from "lucide-react";
 import { Button } from "@/components/ui/button";
-import { createClient } from "@/lib/supabase/client";
-import { updateMatchStatus } from "@/lib/supabase/queries";
+import { updateMatchStatusAction } from "@/lib/supabase/match-actions";
 
 export function MatchActions({ matchId }: { matchId: string }) {
   const router = useRouter();
@@ -15,12 +14,11 @@ export function MatchActions({ matchId }: { matchId: string }) {
   const handleReject = async () => {
     setError(null);
     setRejecting(true);
-    try {
-      const supabase = createClient();
-      await updateMatchStatus(supabase, matchId, "rejected");
+    const result = await updateMatchStatusAction(matchId, "rejected");
+    if (result.success) {
       router.push("/app/embarcador");
-    } catch (err: unknown) {
-      setError(err instanceof Error ? err.message : "Error al rechazar");
+    } else {
+      setError(result.error ?? "Error al rechazar");
       setRejecting(false);
     }
   };

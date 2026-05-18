@@ -9,6 +9,7 @@ import { createClient } from "@/lib/supabase/server";
 import { getMatchById } from "@/lib/supabase/queries";
 import { formatCurrency, formatWeight, formatDate } from "@/lib/utils";
 import { CarrierMatchActions } from "./actions";
+import { MatchChat } from "@/components/shared/match-chat";
 
 const statusLabel: Record<string, string> = {
   suggested: "Nueva", viewed: "Vista", negotiating: "En negociación",
@@ -21,6 +22,7 @@ const statusVariant: Record<string, "default" | "success" | "warning" | "danger"
 
 export default async function TransportistaMatchDetailPage({ params }: { params: { id: string } }) {
   const supabase = await createClient();
+  const { data: { user } } = await supabase.auth.getUser();
   const match = await getMatchById(supabase, params.id);
 
   if (!match) notFound();
@@ -159,6 +161,8 @@ export default async function TransportistaMatchDetailPage({ params }: { params:
           <li>3. El embarcador confirma entrega → ZzingRush libera tu pago</li>
         </ol>
       </div>
+
+      <MatchChat matchId={params.id} currentUserId={user?.id ?? ""} />
 
       {isActive
         ? <CarrierMatchActions matchId={params.id} />

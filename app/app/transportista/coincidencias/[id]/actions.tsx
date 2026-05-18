@@ -3,8 +3,7 @@ import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { CheckCircle2, X } from "lucide-react";
 import { Button } from "@/components/ui/button";
-import { createClient } from "@/lib/supabase/client";
-import { updateMatchStatus } from "@/lib/supabase/queries";
+import { updateMatchStatusAction } from "@/lib/supabase/match-actions";
 
 export function CarrierMatchActions({ matchId }: { matchId: string }) {
   const router = useRouter();
@@ -15,13 +14,12 @@ export function CarrierMatchActions({ matchId }: { matchId: string }) {
   const handleAccept = async () => {
     setError(null);
     setAccepting(true);
-    try {
-      const supabase = createClient();
-      await updateMatchStatus(supabase, matchId, "negotiating");
+    const result = await updateMatchStatusAction(matchId, "negotiating");
+    if (result.success) {
       router.push("/app/transportista");
       router.refresh();
-    } catch (err: unknown) {
-      setError(err instanceof Error ? err.message : "Error al aceptar");
+    } else {
+      setError(result.error ?? "Error al aceptar");
       setAccepting(false);
     }
   };
@@ -29,12 +27,11 @@ export function CarrierMatchActions({ matchId }: { matchId: string }) {
   const handleReject = async () => {
     setError(null);
     setRejecting(true);
-    try {
-      const supabase = createClient();
-      await updateMatchStatus(supabase, matchId, "rejected");
+    const result = await updateMatchStatusAction(matchId, "rejected");
+    if (result.success) {
       router.push("/app/transportista");
-    } catch (err: unknown) {
-      setError(err instanceof Error ? err.message : "Error al rechazar");
+    } else {
+      setError(result.error ?? "Error al rechazar");
       setRejecting(false);
     }
   };

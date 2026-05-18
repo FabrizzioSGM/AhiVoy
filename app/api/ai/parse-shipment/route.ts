@@ -20,8 +20,20 @@ export async function POST(req: NextRequest): Promise<NextResponse<AIParseRespon
     const result = await parseShipmentText(rawInput.trim());
     return NextResponse.json(result);
   } catch (err: unknown) {
-    const message = err instanceof Error ? err.message : "Error interno del servidor";
     console.error("[AI parse-shipment]", err);
-    return NextResponse.json({ success: false, error: message }, { status: 500 });
+
+    const raw = err instanceof Error ? err.message : String(err);
+    let message = "Error interno del servidor. Intenta de nuevo.";
+    let status = 500;
+
+    if (raw.includes("429") || raw.includes("quota") || raw.includes("rate")) {
+      message = "El servicio de IA está temporalmente saturado. Usa el formulario manual o intenta en unos minutos.";
+      status = 429;
+    } else if (raw.includes("API_KEY") || raw.includes("GEMINI_API_KEY")) {
+      message = "El servicio de IA no está configurado. Usa el formulario manual.";
+      status = 503;
+    }
+
+    return NextResponse.json({ success: false, error: message }, { status });
   }
 }

@@ -9,6 +9,7 @@ import { createClient } from "@/lib/supabase/server";
 import { getMatchById } from "@/lib/supabase/queries";
 import { formatCurrency, formatWeight, formatDate } from "@/lib/utils";
 import { MatchActions } from "./actions";
+import { MatchChat } from "@/components/shared/match-chat";
 
 const tierLabel: Record<string, string> = {
   nuevo: "Nuevo", verificado: "Verificado", confiable: "Confiable", elite: "Élite",
@@ -19,6 +20,7 @@ const tierVariant: Record<string, "default" | "success" | "warning" | "elite" | 
 
 export default async function EmbarcadorMatchDetailPage({ params }: { params: { id: string } }) {
   const supabase = await createClient();
+  const { data: { user } } = await supabase.auth.getUser();
   const match = await getMatchById(supabase, params.id);
 
   if (!match) notFound();
@@ -170,6 +172,8 @@ export default async function EmbarcadorMatchDetailPage({ params }: { params: { 
           </p>
         </div>
       </div>
+
+      <MatchChat matchId={params.id} currentUserId={user?.id ?? ""} />
 
       <MatchActions matchId={params.id} />
     </div>
