@@ -143,7 +143,7 @@ export default async function TransportistaDashboard() {
               ) : (
                 <div className="divide-y divide-surface-100">
                   {carrierMatches.map((match) => {
-                    const shipment = match.shipment_requests as Record<string, unknown> | null;
+                    const shipment = match.shipment_requests as unknown as Record<string, unknown> | null;
                     return (
                       <div key={match.id} className="flex items-center gap-4 px-6 py-4 hover:bg-surface-50">
                         <div className="w-10 h-10 rounded-full bg-accent-50 flex items-center justify-center flex-shrink-0 flex-col">

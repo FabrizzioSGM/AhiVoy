@@ -27,8 +27,8 @@ export default async function TransportistaMatchDetailPage({ params }: { params:
 
   if (!match) notFound();
 
-  const shipment = match.shipment_requests as Record<string, unknown> | null;
-  const route    = match.return_routes    as Record<string, unknown> | null;
+  const shipment = match.shipment_requests as unknown as Record<string, unknown> | null;
+  const route    = match.return_routes    as unknown as Record<string, unknown> | null;
   const isActive = !["accepted", "rejected", "expired"].includes(match.status);
 
   // Calcular tiempo restante hasta expiración

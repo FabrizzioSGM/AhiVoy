@@ -37,7 +37,7 @@ export default async function CalificarPage({ params }: { params: { matchId: str
     if (profile?.name) carrierName = profile.name;
   }
 
-  const shipment = match.shipment_requests as Record<string, unknown> | null;
+  const shipment = match.shipment_requests as unknown as Record<string, unknown> | null;
 
   return (
     <div className="max-w-lg mx-auto p-6">

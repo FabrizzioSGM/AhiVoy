@@ -116,7 +116,7 @@ export default async function EmbarcadorDashboard() {
                 </div>
               ) : (
                 matches.map((match) => {
-                  const shipment = match.shipment_requests as Record<string, unknown> | null;
+                  const shipment = match.shipment_requests as unknown as Record<string, unknown> | null;
                   return (
                     <div key={match.id} className="flex items-center gap-4 px-6 py-4 hover:bg-surface-50 border-b border-surface-100 last:border-0">
                       <div className="w-10 h-10 rounded-full bg-accent-50 flex items-center justify-center flex-shrink-0">

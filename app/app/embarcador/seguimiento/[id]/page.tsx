@@ -32,7 +32,7 @@ export default async function SeguimientoPage({ params }: { params: { id: string
 
   if (!match) notFound();
 
-  const shipment = match.shipment_requests as Record<string, unknown> | null;
+  const shipment = match.shipment_requests as unknown as Record<string, unknown> | null;
   if (!shipment) notFound();
 
   // Fetch tracking events for this shipment
