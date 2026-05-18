@@ -9,7 +9,8 @@ function getAdminClient() {
   return createClient(url, key, { auth: { autoRefreshToken: false, persistSession: false } });
 }
 
-export async function POST(req: NextRequest) {
+export async function GET(req: NextRequest) {
+  // Vercel Cron sends GET requests with this header
   const authHeader = req.headers.get("authorization");
   const cronSecret = process.env.CRON_SECRET;
 
